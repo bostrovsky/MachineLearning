@@ -1,0 +1,124 @@
+---
+title: "Machine Learning Class Project"
+author: "Brian Ostrovsky"
+date: "March 8, 2015"
+output: html_document
+---
+## Background (directly from the assignment)
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+## Data (directly from the assignment)
+
+The training data for this project are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E)
+
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz3Ts5IP9sp
+
+## Assignment
+
+The objective of the assignment is to predict the manner in which the exercise was performed using the "classe" variable (explained in the preceeding section as Class A through Class E) in the training dataset.  This report will describe how the model was built, cross-validation methods used and the expected out of sample error as well as why the choices were made.  Finally, we will apply the model to a test dataset of 20 cases which will be submitted for grading.
+
+## Setup Environment 
+
+```{r echo=FALSE}
+library(ggplot2)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(rattle)
+set.seed(1234)
+setwd("~/Desktop/Machine Learning/MachineLearningProjectWriteup")
+```
+
+##Load Data and Variable Cleanup
+
+Here we load the data downloaded from the source mentioned above.  We set NA'a to 0 in aniticpation of eliminating near zero variables. We then isolated and removed near-zero variables reducing the number of variables from 160 down to 52. We then split the training setup (60%/40%) into a train and test data set and renamed the orignal pml.testing set validationset.
+
+```{r echo=FALSE}
+pml.training <- read.csv("~/Desktop/Machine Learning/MachineLearningProjectWriteup/pml-training.csv")
+pml.testing <- read.csv("~/Desktop/Machine Learning/MachineLearningProjectWriteup/pml-testing.csv")
+trainingset<-pml.training[,colSums(is.na(pml.training)) == 0]
+validationset <-pml.testing[,colSums(is.na(pml.testing)) == 0]
+```
+```{r}
+nzv <- nearZeroVar(trainingset)
+filteredTrain <- trainingset[, -nzv]
+filteredTrain <- filteredTrain[, -c(1:7)]
+
+inTrain <- createDataPartition(y=filteredTrain$classe, p=0.6, list=FALSE)
+train <- filteredTrain[inTrain,]
+test <- filteredTrain[-inTrain,]
+
+####Complete Fileters Test Set (seperated into test and train)
+dim(filteredTrain)
+#### final processed train dataset
+dim(train)
+####final processed test dataset
+dim(test)
+```
+
+We now remove the near-zero and non-classifying columns (columns 1-7) from the validation data set. The final validation data set to be used for submission is filteredVal and has 52 variables.
+
+```{r}
+nzv1 <- nearZeroVar(validationset)
+filteredVal <- validationset[, -nzv1]
+filteredVal <- filteredVal[, -c(1:7)]
+####final processed validation dataset to used for submission
+dim(filteredVal)
+```
+
+##Model Selection and Testing
+
+We chose to test both the Decision Tree and Random Forrest models (shown below) as they are strong classification engines. 
+
+###Decision Tree Model
+```{r}
+modelFitClass <- rpart(classe ~ ., data=train, method="class")
+predictionClass <- predict(modelFitClass, test, type = "class")
+rpart.plot(modelFitClass, main="Classification Tree", extra=102, under=TRUE, faclen=0)
+confusionMatrix(predictionClass, test$classe)
+```
+As we see, this yields a model that is roughly 67% predictive.
+
+###Random Forest Model
+
+The Random Trees algorighm was run with 4 fold cross validation.
+```{r}
+set.seed(1234)
+modFit2 <- train(classe~.,data=train,method="rf",trControl=trainControl(method="cv",number=4),prox=TRUE, allowParallel=TRUE)
+modFit2
+predictions2 <- predict(modFit2, newdata=test)
+print(confusionMatrix(predictions2, test$classe), digits=4)
+```
+As we see, this yields a model that is roughly 91.11% predictive with a 95% confidence interval between 98.87% and 99.3%. This is the obvoius choice and would argue to look no further. 
+
+####The out of sample error on this model is .0089 ( 1 minus the model accuracy, 1-.9911).
+
+##Prediction Assignment Submission
+```{r}
+answers <- predict(modFit2, newdata=filteredVal)
+answers
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(answers)
+```
+Predictions submitted and 20 of 20 are correct.
+
+##Conclusions and Observtions
+The random forest appraoch with cross validation proved to be extremely accurate and help up in the submitted assignment.  
